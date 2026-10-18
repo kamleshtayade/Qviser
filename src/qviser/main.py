@@ -3,6 +3,7 @@ import logging
 from dhanhq import DhanContext, dhanhq
 
 from qviser.config import get_settings, setup_logging
+from qviser.ledger import fetch_recent_ledger, log_ledger
 from qviser.portfolio import fetch_holdings, group_holdings_by_exchange, log_holdings_by_exchange
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,9 @@ def main():
     # Get holdings, categorised by exchange
     holdings = fetch_holdings(dhan)
     log_holdings_by_exchange(group_holdings_by_exchange(holdings))
+
+    # Get ledger report for the last 30 days
+    log_ledger(fetch_recent_ledger(dhan, days=30))
 
 if __name__ == "__main__":
     main()

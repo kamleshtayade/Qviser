@@ -1,0 +1,7 @@
+[project]
+name = "qviser"
+version = "0.1.0"
+description = "Qviser (Quant + Adviser) is a modular, high-performance Python co-assisting engine designed to support manual, hybrid, and semi-automated quantitative trading workflows."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []

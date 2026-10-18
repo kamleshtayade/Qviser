@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "dhanhq>=2.3.0",
+    "python-dotenv>=1.2.4",
 ]
 
 [project.scripts]

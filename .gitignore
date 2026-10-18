@@ -24,6 +24,7 @@ htmlcov/
 # Environment / secrets (API keys, Dhan credentials, etc.)
 .env
 .env.*
+!.env.example
 
 # Editors / OS
 .vscode/

@@ -64,7 +64,7 @@ qviser/
 ├── src/
 │   └── qviser/
 │       ├── __init__.py
-│       ├── cli.py           # Command Line Interface (CLI) entry point
+│       ├── main.py          # CLI entry point (`qviser` command → qviser.main:main)
 │       ├── engine.py        # Core event loop and orchestration
 │       ├── features/        # Technical analysis, VWAP, and order flow calculations
 │       │   ├── indicators.py
@@ -81,7 +81,9 @@ qviser/
 │           ├── logger.py
 │           └── telemetry.py
 ├── tests/                   # Unit and integration tests
-├── pyproject.toml           # Build system and dependency definitions
+├── .python-version          # Python version pinned for uv
+├── pyproject.toml           # Project metadata, dependencies, and build system (uv_build)
+├── uv.lock                  # Locked dependency versions (commit this file)
 └── README.md
 ```
 
@@ -91,26 +93,52 @@ qviser/
 
 ### Prerequisites
 
-- **Python 3.11+**
-- Virtual environment tool (`venv`, `conda`, or `poetry`)
+- **[uv](https://docs.astral.sh/uv/)**: the Python package and project manager used by this repo
+- **Python 3.11+**: uv installs the version pinned in `.python-version` for you if it's missing
+
+Install uv if you don't have it:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or with Homebrew
+brew install uv
+```
 
 ### 1. Installation
 
-Clone the repository and install `qviser` in editable mode:
+Clone the repository and sync the environment:
 
 ```bash
 git clone https://github.com/your-username/qviser.git
 cd qviser
 
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install package dependencies
-pip install -e .
+# Creates .venv, installs the pinned Python, all locked dependencies,
+# and qviser itself in editable mode
+uv sync
 ```
 
-### 2. Configuration
+You don't need to activate a virtual environment. Prefix commands with `uv run` and they run inside the project's `.venv` automatically.
+
+> **Note:** If you have another virtualenv active (e.g. pyenv or conda), uv warns that `VIRTUAL_ENV` doesn't match `.venv` and ignores it. Run `deactivate` first to get rid of the warning.
+
+### 2. Managing Dependencies
+
+```bash
+uv add pandas numpy              # Add runtime dependencies
+uv add --dev pytest ruff         # Add development-only dependencies
+uv remove <package>              # Remove a dependency
+uv lock --upgrade                # Upgrade all locked versions
+uv sync --locked                 # Install exactly what uv.lock specifies (use in CI)
+```
+
+`uv add` and `uv remove` update both `pyproject.toml` and `uv.lock`. Commit both files.
+
+### 3. Configuration
 
 Copy the sample environment file and set up your trading configuration:
 
@@ -157,10 +185,18 @@ if __name__ == "__main__":
 
 ### CLI Command
 
-Alternatively, start the engine via the CLI:
+Run a script inside the project environment:
 
 ```bash
-qviser run --config config/local_config.yaml --mode copilot
+uv run python examples/copilot.py
+```
+
+### CLI Command
+
+The `qviser` command is registered via `[project.scripts]` in `pyproject.toml`. Start the engine with:
+
+```bash
+uv run qviser run --config config/local_config.yaml --mode copilot
 ```
 
 ---
@@ -170,7 +206,8 @@ qviser run --config config/local_config.yaml --mode copilot
 Ensure all unit tests and risk rule validations pass before deployment:
 
 ```bash
-pytest tests/ -v
+uv add --dev pytest   # one-time setup
+uv run pytest tests/ -v
 ```
 
 ---
@@ -180,8 +217,15 @@ pytest tests/ -v
 - **Data Processing:** `pandas`, `numpy`, `scipy`
 - **Indicators & Strategy:** `TA-Lib`, `pandas-ta`
 - **Concurrency & Async:** `asyncio`, `celery`, `redis`
+- **Broker API:** `dhanhq`
 - **Observability:** `opentelemetry-api`, `loguru`
-- **Packaging:** `hatchling` / `setuptools` via `pyproject.toml`
+- **Packaging & Environment:** [`uv`](https://docs.astral.sh/uv/) with the `uv_build` backend (`src/` layout)
+
+### Building a Distribution
+
+```bash
+uv build   # writes the sdist and wheel to dist/
+```
 
 ---
 

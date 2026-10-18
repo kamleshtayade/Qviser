@@ -13,7 +13,9 @@ def main():
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    context = DhanContext(settings.dhan_client_id, settings.dhan_access_token)
+    context = DhanContext(
+        settings.dhan_client_id, settings.dhan_access_token.get_secret_value()
+    )
     dhan = dhanhq(context)
 
     # Get fund limits

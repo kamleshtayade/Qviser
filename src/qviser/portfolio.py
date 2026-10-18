@@ -2,8 +2,10 @@
 
 import logging
 from collections import defaultdict
+from decimal import Decimal
 
 from dhanhq import dhanhq
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -11,11 +13,24 @@ logger = logging.getLogger(__name__)
 NO_HOLDINGS_ERROR_CODE = "DH-1111"
 
 
-def fetch_holdings(dhan: dhanhq) -> list[dict]:
+class Holding(BaseModel):
+    # Dhan may send ids as numbers; accept them for the str fields.
+    model_config = ConfigDict(frozen=True, populate_by_name=True, coerce_numbers_to_str=True)
+
+    exchange: str = "UNKNOWN"
+    trading_symbol: str = Field(default="", alias="tradingSymbol")
+    security_id: str = Field(default="", alias="securityId")
+    isin: str = ""
+    total_qty: int = Field(default=0, alias="totalQty")
+    available_qty: int = Field(default=0, alias="availableQty")
+    avg_cost_price: Decimal = Field(default=Decimal("0"), alias="avgCostPrice")
+
+
+def fetch_holdings(dhan: dhanhq) -> list[Holding]:
     """Return all holdings across exchanges; an empty list if there are none."""
     response = dhan.get_holdings()
     if response.get("status") == "success":
-        return response.get("data") or []
+        return [Holding.model_validate(raw) for raw in response.get("data") or []]
 
     remarks = response.get("remarks")
     if isinstance(remarks, dict) and remarks.get("error_code") == NO_HOLDINGS_ERROR_CODE:
@@ -23,15 +38,15 @@ def fetch_holdings(dhan: dhanhq) -> list[dict]:
     raise RuntimeError(f"Failed to fetch holdings: {remarks}")
 
 
-def group_holdings_by_exchange(holdings: list[dict]) -> dict[str, list[dict]]:
-    """Group holdings by their exchange field (e.g. NSE, BSE, ALL)."""
-    grouped: dict[str, list[dict]] = defaultdict(list)
+def group_holdings_by_exchange(holdings: list[Holding]) -> dict[str, list[Holding]]:
+    """Group holdings by their exchange (e.g. NSE, BSE, ALL)."""
+    grouped: dict[str, list[Holding]] = defaultdict(list)
     for holding in holdings:
-        grouped[holding.get("exchange") or "UNKNOWN"].append(holding)
+        grouped[holding.exchange or "UNKNOWN"].append(holding)
     return dict(grouped)
 
 
-def log_holdings_by_exchange(grouped: dict[str, list[dict]]) -> None:
+def log_holdings_by_exchange(grouped: dict[str, list[Holding]]) -> None:
     if not grouped:
         logger.info("No holdings available")
         return
@@ -39,8 +54,5 @@ def log_holdings_by_exchange(grouped: dict[str, list[dict]]) -> None:
         logger.info("%s: %d holding(s)", exchange, len(holdings))
         for h in holdings:
             logger.info(
-                "  %s qty=%s avg_cost=%s",
-                h.get("tradingSymbol"),
-                h.get("totalQty"),
-                h.get("avgCostPrice"),
+                "  %s qty=%s avg_cost=%s", h.trading_symbol, h.total_qty, h.avg_cost_price
             )

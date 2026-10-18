@@ -1,43 +1,45 @@
 """Loads application settings and secrets from environment variables / .env."""
 
-import os
-from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Literal
 
-from dotenv import load_dotenv
+from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class ConfigError(RuntimeError):
     """Raised when required configuration is missing or invalid."""
 
 
-def _require_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise ConfigError(
-            f"Missing environment variable {name}; copy .env.example to .env and fill it in."
-        )
-    return value
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        frozen=True,
+    )
 
+    dhan_client_id: str = Field(min_length=1)
+    # SecretStr keeps the token out of logs, reprs and tracebacks.
+    dhan_access_token: SecretStr
+    log_level: LogLevel = "INFO"
 
-@dataclass(frozen=True)
-class Settings:
-    dhan_client_id: str
-    # repr=False keeps the token out of logs and tracebacks.
-    dhan_access_token: str = field(repr=False)
-    log_level: str = "INFO"
-
+    @field_validator("log_level", mode="before")
     @classmethod
-    def from_env(cls) -> "Settings":
-        load_dotenv()
-        return cls(
-            dhan_client_id=_require_env("DHAN_CLIENT_ID"),
-            dhan_access_token=_require_env("DHAN_ACCESS_TOKEN"),
-            log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
-        )
+    def _upper_log_level(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Return the application settings, loaded once on first call."""
-    return Settings.from_env()
+    try:
+        return Settings()
+    except ValidationError as exc:
+        fields = ", ".join(".".join(map(str, e["loc"])).upper() for e in exc.errors())
+        raise ConfigError(
+            f"Invalid or missing configuration: {fields}; "
+            "copy .env.example to .env and fill it in."
+        ) from exc

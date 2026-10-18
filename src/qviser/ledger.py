@@ -1,11 +1,11 @@
 """Ledger report helpers built on top of the Dhan API (GET /v2/ledger)."""
 
 import logging
-from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from dhanhq import dhanhq
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -17,38 +17,38 @@ OPENING_BALANCE = "OPENING BALANCE"
 CLOSING_BALANCE = "CLOSING BALANCE"
 
 
-@dataclass(frozen=True)
-class LedgerEntry:
-    voucher_date: date
-    voucher_number: str
-    description: str
-    narration: str
-    exchange: str
-    debit: Decimal
-    credit: Decimal
-    running_balance: Decimal
+class LedgerEntry(BaseModel):
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
+    voucher_date: date = Field(alias="voucherdate")
+    voucher_number: str = Field(default="", alias="vouchernumber")
+    description: str = Field(default="", alias="voucherdesc")
+    narration: str = ""
+    exchange: str = ""
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    running_balance: Decimal = Field(default=Decimal("0"), alias="runbal")
+
+    @field_validator("voucher_date", mode="before")
     @classmethod
-    def from_api(cls, raw: dict) -> "LedgerEntry":
-        return cls(
-            voucher_date=datetime.strptime(raw["voucherdate"], VOUCHER_DATE_FORMAT).date(),
-            voucher_number=raw.get("vouchernumber", ""),
-            description=raw.get("voucherdesc", ""),
-            narration=raw.get("narration", ""),
-            exchange=raw.get("exchange", ""),
-            debit=_to_decimal(raw.get("debit")),
-            credit=_to_decimal(raw.get("credit")),
-            running_balance=_to_decimal(raw.get("runbal")),
-        )
+    def _parse_voucher_date(cls, value: object) -> object:
+        if isinstance(value, str):
+            return datetime.strptime(value, VOUCHER_DATE_FORMAT).date()
+        return value
+
+    @field_validator("debit", "credit", "running_balance", mode="before")
+    @classmethod
+    def _parse_amount(cls, value: object) -> object:
+        # Amounts arrive as strings, sometimes empty or with thousands separators.
+        if value is None or value == "":
+            return Decimal("0")
+        if isinstance(value, str):
+            return value.replace(",", "")
+        return value
 
     @property
     def is_balance_row(self) -> bool:
         return self.description.strip().upper() in (OPENING_BALANCE, CLOSING_BALANCE)
-
-
-def _to_decimal(value: str | None) -> Decimal:
-    # Amounts arrive as strings, sometimes with thousands separators.
-    return Decimal(str(value or "0").replace(",", ""))
 
 
 def fetch_ledger(dhan: dhanhq, from_date: date, to_date: date) -> list[LedgerEntry]:
@@ -56,7 +56,7 @@ def fetch_ledger(dhan: dhanhq, from_date: date, to_date: date) -> list[LedgerEnt
     response = dhan.ledger_report(from_date.isoformat(), to_date.isoformat())
     if response.get("status") != "success":
         raise RuntimeError(f"Failed to fetch ledger: {response.get('remarks')}")
-    return [LedgerEntry.from_api(raw) for raw in response.get("data") or []]
+    return [LedgerEntry.model_validate(raw) for raw in response.get("data") or []]
 
 
 def fetch_recent_ledger(dhan: dhanhq, days: int = 30) -> list[LedgerEntry]:

@@ -5,6 +5,7 @@ from dhanhq import DhanContext, dhanhq
 from qviser.config import get_settings, setup_logging
 from qviser.ledger import fetch_recent_ledger, log_ledger
 from qviser.portfolio import fetch_holdings, group_holdings_by_exchange, log_holdings_by_exchange
+from qviser.token_manager import ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +14,8 @@ def main():
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    context = DhanContext(
-        settings.dhan_client_id, settings.dhan_access_token.get_secret_value()
-    )
+    access_token = ensure_fresh_token(settings)
+    context = DhanContext(settings.dhan_client_id, access_token)
     dhan = dhanhq(context)
 
     # Get fund limits

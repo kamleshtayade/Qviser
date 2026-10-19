@@ -65,6 +65,10 @@ qviser/
 │   └── qviser/
 │       ├── __init__.py
 │       ├── main.py          # CLI entry point (`qviser` command → qviser.main:main)
+│       ├── config/          # Settings/secrets from .env (pydantic-settings) and logging setup
+│       ├── token_manager.py # Dhan access token auto-renewal
+│       ├── portfolio.py     # Holdings, grouped by exchange
+│       ├── ledger.py        # Ledger report
 │       ├── engine.py        # Core event loop and orchestration
 │       ├── features/        # Technical analysis, VWAP, and order flow calculations
 │       │   ├── indicators.py
@@ -140,7 +144,52 @@ uv sync --locked                 # Install exactly what uv.lock specifies (use i
 
 ### 3. Configuration
 
-Copy the sample environment file and set up your trading configuration:
+#### Dhan credentials (`.env`)
+
+Secrets are read from a `.env` file in the directory you run `qviser` from (the project root). `.env` is gitignored; `.env.example` is the committed template:
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DHAN_CLIENT_ID` | yes | | Your Dhan client ID |
+| `DHAN_ACCESS_TOKEN` | yes | | Access token generated on Dhan Web (valid 24 hours) |
+| `DHAN_TOKEN_RENEW_BEFORE_HOURS` | no | `12` | Renew the token when it has fewer than this many hours left (`0` < value ≤ `24`) |
+| `DHAN_TOKEN_AUTO_RENEW` | no | `true` | Set to `false` to turn auto-renewal off |
+| `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
+
+Values set in the shell environment take precedence over `.env`.
+
+#### Access token auto-renewal
+
+Dhan Web access tokens are valid for **24 hours**. Qviser renews the token for you using Dhan's [`RenewToken`](https://dhanhq.co/docs/v2/authentication/) API.
+
+**When renewal happens:**
+
+- Renewal is checked **once, at startup**, every time you run `qviser`. There is no background renewal while the app is running.
+- The token's expiry time is read from the token itself (the JWT `exp` claim).
+- If the token has **less than `DHAN_TOKEN_RENEW_BEFORE_HOURS` left** (default 12 hours), it is renewed. The new token is valid for another 24 hours from the moment of renewal.
+- If more time is left than that, the current token is used and nothing is renewed.
+
+With the default of 12 hours, running `qviser` at any point in the **second half** of the token's 24-hour life renews it. Setting the value to `24` renews it on every run.
+
+**What happens on renewal:**
+
+- Dhan expires the old token and issues a new one, so Qviser writes the new token back to `DHAN_ACCESS_TOKEN` in `.env` (other lines are kept; the file is written atomically and set to owner-only permissions).
+- If `DHAN_ACCESS_TOKEN` is also set in your shell environment, that value still overrides `.env`; Qviser logs a warning so you can update or unset it.
+- If the new token can't be found in Dhan's response, the raw response is saved to `.dhan_renew_response.json` (owner-only, gitignored) so the token isn't lost, and Qviser stops with an error.
+
+**When renewal is not possible:**
+
+- **An expired token can't be renewed.** If `qviser` isn't run while the token is still valid, it stops with an error, and you need to generate a new token on Dhan Web and paste it into `.env`.
+- To keep the token alive without running `qviser` by hand, schedule a run at least once within each renewal window, e.g. a cron job every 12 hours: `0 */12 * * * cd /path/to/qviser && uv run qviser`.
+- Renewal only works for tokens generated on Dhan Web.
+
+#### Trading configuration
+
+Copy the sample configuration and set up your trading configuration:
 
 ```bash
 cp config/default_config.yaml config/local_config.yaml

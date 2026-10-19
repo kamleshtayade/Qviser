@@ -30,3 +30,6 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+# Raw Dhan token renewal response (saved only if the new token could not be parsed)
+.dhan_renew_response.json
